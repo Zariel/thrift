@@ -22,8 +22,11 @@ package thrift
 import (
 	"errors"
 	"io"
-	"net"
 )
+
+type timeoutable interface {
+	Timeout() bool
+}
 
 // Thrift Transport exception
 type TTransportException interface {
@@ -73,7 +76,7 @@ func NewTTransportExceptionFromError(e error) TTransportException {
 	switch v := e.(type) {
 	case TTransportException:
 		return v
-	case *net.OpError:
+	case timeoutable:
 		if v.Timeout() {
 			return &tTransportException{typeId: TIMED_OUT, err: e}
 		}
