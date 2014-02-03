@@ -2324,19 +2324,12 @@ void t_go_generator::generate_process_function(t_service* tservice,
                indent() << "}" << endl <<
                indent() << "iprot.ReadMessageEnd()" << endl <<
                indent() << "result := New" << resultname << "()" << endl <<
+               indent() << "var err2 error" << endl <<
                indent() << "if ";
 
     if (!tfunction->is_oneway()) {
         if (!tfunction->get_returntype()->is_void()) {
             f_service_ << "result.Success, ";
-        }
-
-        t_struct* exceptions = tfunction->get_xceptions();
-        const vector<t_field*>& fields = exceptions->get_members();
-        vector<t_field*>::const_iterator f_iter;
-
-        for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-            f_service_ << "result." << publicize(variable_name_to_go_name((*f_iter)->get_name())) << ", ";
         }
     }
 
@@ -2345,7 +2338,7 @@ void t_go_generator::generate_process_function(t_service* tservice,
     const std::vector<t_field*>& fields = arg_struct->get_members();
     vector<t_field*>::const_iterator f_iter;
     f_service_ <<
-               "err = p.handler." << publicize(tfunction->get_name()) << "(";
+               "err2 = p.handler." << publicize(tfunction->get_name()) << "(";
     bool first = true;
 
     for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
@@ -2358,24 +2351,41 @@ void t_go_generator::generate_process_function(t_service* tservice,
         f_service_ << "args." << publicize(variable_name_to_go_name((*f_iter)->get_name()));
     }
 
-    f_service_ << "); err != nil {" << endl <<
+    f_service_ << "); err2 != nil {" << endl <<
+               indent() << "switch v := err2.(type) {" << endl;
+
+    t_struct* exceptions = tfunction->get_xceptions();
+    const vector<t_field*>& x_fields = exceptions->get_members();
+    vector<t_field*>::const_iterator xf_iter;
+
+    for (xf_iter = x_fields.begin(); xf_iter != x_fields.end(); ++xf_iter) {
+        f_service_ <<
+                    indent() << "  case *" << type_name((*xf_iter)->get_type()) << ":" << endl <<
+                    indent() << "result." << publicize(variable_name_to_go_name((*xf_iter)->get_name())) << " = v" << endl;
+    }
+
+    f_service_ <<
+               indent() << "  default:" << endl <<
                indent() << "  x := thrift.NewTApplicationException(thrift.INTERNAL_ERROR, \"Internal error processing " << escape_string(tfunction->get_name()) << ": \" + err.Error())" << endl <<
                indent() << "  oprot.WriteMessageBegin(\"" << escape_string(tfunction->get_name()) << "\", thrift.EXCEPTION, seqId)" << endl <<
                indent() << "  x.Write(oprot)" << endl <<
                indent() << "  oprot.WriteMessageEnd()" << endl <<
                indent() << "  oprot.Flush()" << endl <<
-               indent() << "  return" << endl <<
+               indent() << "  return false, err2" << endl <<
+               indent() << "}" << endl;
+
+    f_service_ <<
                indent() << "}" << endl <<
-               indent() << "if err2 := oprot.WriteMessageBegin(\"" << escape_string(tfunction->get_name()) << "\", thrift.REPLY, seqId); err2 != nil {" << endl <<
+               indent() << "if err2 = oprot.WriteMessageBegin(\"" << escape_string(tfunction->get_name()) << "\", thrift.REPLY, seqId); err2 != nil {" << endl <<
                indent() << "  err = err2" << endl <<
                indent() << "}" << endl <<
-               indent() << "if err2 := result.Write(oprot); err == nil && err2 != nil {" << endl <<
+               indent() << "if err2 = result.Write(oprot); err == nil && err2 != nil {" << endl <<
                indent() << "  err = err2" << endl <<
                indent() << "}" << endl <<
-               indent() << "if err2 := oprot.WriteMessageEnd(); err == nil && err2 != nil {" << endl <<
+               indent() << "if err2 = oprot.WriteMessageEnd(); err == nil && err2 != nil {" << endl <<
                indent() << "  err = err2" << endl <<
                indent() << "}" << endl <<
-               indent() << "if err2 := oprot.Flush(); err == nil && err2 != nil {" << endl <<
+               indent() << "if err2 = oprot.Flush(); err == nil && err2 != nil {" << endl <<
                indent() << "  err = err2" << endl <<
                indent() << "}" << endl <<
                indent() << "if err != nil {" << endl <<
