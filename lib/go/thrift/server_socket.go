@@ -26,7 +26,6 @@ import (
 
 type TServerSocket struct {
 	listener      net.Listener
-	addr          net.Addr
 	clientTimeout time.Duration
 	interrupted   bool
 }
@@ -36,22 +35,23 @@ func NewTServerSocket(listenAddr string) (*TServerSocket, error) {
 }
 
 func NewTServerSocketTimeout(listenAddr string, clientTimeout time.Duration) (*TServerSocket, error) {
-	addr, err := net.ResolveTCPAddr("tcp", listenAddr)
+	l, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return nil, err
 	}
-	return &TServerSocket{addr: addr, clientTimeout: clientTimeout}, nil
+
+	return NewTServerSocketListener(l, clientTimeout)
+}
+
+func NewTServerSocketListener(l net.Listener, clientTimeout time.Duration) (*TServerSocket, error) {
+	return &TServerSocket{listener: l, clientTimeout: clientTimeout}, nil
 }
 
 func (p *TServerSocket) Listen() error {
 	if p.IsListening() {
 		return nil
 	}
-	l, err := net.Listen(p.addr.Network(), p.addr.String())
-	if err != nil {
-		return err
-	}
-	p.listener = l
+
 	return nil
 }
 
@@ -59,13 +59,16 @@ func (p *TServerSocket) Accept() (TTransport, error) {
 	if p.interrupted {
 		return nil, errTransportInterrupted
 	}
+
 	if p.listener == nil {
 		return nil, NewTTransportException(NOT_OPEN, "No underlying server socket")
 	}
+
 	conn, err := p.listener.Accept()
 	if err != nil {
 		return nil, NewTTransportExceptionFromError(err)
 	}
+
 	return NewTSocketFromConnTimeout(conn, p.clientTimeout), nil
 }
 
@@ -79,16 +82,14 @@ func (p *TServerSocket) Open() error {
 	if p.IsListening() {
 		return NewTTransportException(ALREADY_OPEN, "Server socket already open")
 	}
-	if l, err := net.Listen(p.addr.Network(), p.addr.String()); err != nil {
-		return err
-	} else {
-		p.listener = l
-	}
+
+	// The socket should already be listening here
+
 	return nil
 }
 
 func (p *TServerSocket) Addr() net.Addr {
-	return p.addr
+	return p.listener.Addr()
 }
 
 func (p *TServerSocket) Close() error {
