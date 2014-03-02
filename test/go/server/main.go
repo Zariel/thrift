@@ -4,7 +4,6 @@ import (
 	"flag"
 	"log"
 	"net"
-	"os"
 
 	"git.apache.org/thrift.git/lib/go/thrift"
 )
@@ -32,28 +31,22 @@ func main() {
 		transport        thrift.TServerTransport
 		processor        thrift.TProcessor
 		listener         net.Listener
+		err              error
 	)
 
 	if unixSocket != "" {
-		f, err := os.Open(unixSocket)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer f.Close()
-
-		listener, err = net.FileListener(f)
+		listener, err = net.Listen("unix", unixSocket)
 		if err != nil {
 			log.Fatal(err)
 		}
 	} else {
-		var err error
 		listener, err = net.Listen("tcp", addr)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	transport, err := thrift.NewTServerSocketListener(listener, 0)
+	transport, err = thrift.NewTServerSocketListener(listener, 0)
 	if err != nil {
 		log.Fatal(err)
 	}
