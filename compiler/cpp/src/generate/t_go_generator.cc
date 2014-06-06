@@ -425,12 +425,6 @@ std::string t_go_generator::publicize(const std::string& value, bool is_args_or_
     // final length before further checks, the string may become longer
     size_t len_before = value2.length();
 
-    // IDL identifiers may start with "New" which interferes with the CTOR pattern
-    // Adding an extra underscore to all those identifiers solves this
-    if( (len_before >= 3) && (value2.substr(0,3) == "New")) {
-        value2 += '_';
-    }
-
     // IDL identifiers may end with "Args"/"Result" which interferes with the implicit service function structs
     // Adding another extra underscore to all those identifiers solves this
     // Suppress this check for the actual helper struct names
