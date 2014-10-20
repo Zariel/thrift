@@ -27,12 +27,13 @@ import (
 )
 
 type THttpClient struct {
-	response           *http.Response
 	url                *url.URL
 	requestBuffer      *bytes.Buffer
 	header             http.Header
 	nsecConnectTimeout int64
 	nsecReadTimeout    int64
+	respBuffer         bytes.Buffer
+	closed             bool
 }
 
 type THttpClientTransportFactory struct {
@@ -77,7 +78,17 @@ func NewTHttpClient(urlstr string) (TTransport, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &THttpClient{response: response, url: parsedURL}, nil
+	defer response.Body.Close()
+	client := &THttpClient{
+		url: parsedURL,
+	}
+
+	_, err = client.respBuffer.ReadFrom(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }
 
 func NewTHttpPostClient(urlstr string) (TTransport, error) {
@@ -125,7 +136,7 @@ func (p *THttpClient) Open() error {
 }
 
 func (p *THttpClient) IsOpen() bool {
-	return p.response != nil || p.requestBuffer != nil
+	return !p.closed
 }
 
 func (p *THttpClient) Peek() bool {
@@ -133,28 +144,25 @@ func (p *THttpClient) Peek() bool {
 }
 
 func (p *THttpClient) Close() error {
-	if p.response != nil && p.response.Body != nil {
-		err := p.response.Body.Close()
-		p.response = nil
-		return err
-	}
+	p.respBuffer.Reset()
 	if p.requestBuffer != nil {
-		p.requestBuffer.Reset()
 		p.requestBuffer = nil
 	}
+	p.closed = true
 	return nil
 }
 
 func (p *THttpClient) Read(buf []byte) (int, error) {
-	if p.response == nil {
+	if p.respBuffer.Len() == 0 {
 		return 0, NewTTransportException(NOT_OPEN, "Response buffer is empty, no request.")
 	}
-	n, err := p.response.Body.Read(buf)
+	n, err := p.respBuffer.Read(buf)
 	return n, NewTTransportExceptionFromError(err)
 }
 
-func (p *THttpClient) ReadByte() (c byte, err error) {
-	return readByte(p.response.Body)
+func (p *THttpClient) ReadByte() (byte, error) {
+	b, err := readByte(&p.respBuffer)
+	return b, err
 }
 
 func (p *THttpClient) Write(buf []byte) (int, error) {
@@ -166,19 +174,18 @@ func (p *THttpClient) WriteByte(c byte) error {
 	return p.requestBuffer.WriteByte(c)
 }
 
-func (p *THttpClient) WriteString(s string) (n int, err error) {
+func (p *THttpClient) WriteString(s string) (int, error) {
 	return p.requestBuffer.WriteString(s)
 }
 
 func (p *THttpClient) Flush() error {
-	client := &http.Client{}
 	req, err := http.NewRequest("POST", p.url.String(), p.requestBuffer)
 	if err != nil {
 		return NewTTransportExceptionFromError(err)
 	}
 	p.header.Add("Content-Type", "application/x-thrift")
 	req.Header = p.header
-	response, err := client.Do(req)
+	response, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return NewTTransportExceptionFromError(err)
 	}
@@ -186,6 +193,12 @@ func (p *THttpClient) Flush() error {
 		// TODO(pomack) log bad response
 		return NewTTransportException(UNKNOWN_TRANSPORT_EXCEPTION, "HTTP Response code: "+strconv.Itoa(response.StatusCode))
 	}
-	p.response = response
+	p.respBuffer.Reset()
+	// read buffer and close the body to reuse connections
+	_, err = p.respBuffer.ReadFrom(response.Body)
+	if err != nil {
+		return NewTTransportExceptionFromError(err)
+	}
+	response.Body.Close()
 	return nil
 }
