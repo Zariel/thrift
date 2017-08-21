@@ -38,7 +38,7 @@ var testloops = flag.Int("testloops", 1, "Number of Tests")
 
 func main() {
 	flag.Parse()
-	client, err := common.StartClient(*host, *port, *domain_socket, *transport, *protocol, *ssl)
+	client, _, err := common.StartClient(*host, *port, *domain_socket, *transport, *protocol, *ssl)
 	if err != nil {
 		t.Fatalf("Unable to start client: ", err)
 	}

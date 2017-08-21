@@ -67,12 +67,11 @@ func doUnit(t *testing.T, unit *test_unit) {
 	}
 	go server.AcceptLoop()
 	defer server.Stop()
-	client, err := StartClient(unit.host, unit.port, unit.domain_socket, unit.transport, unit.protocol, unit.ssl)
+	client, trans, err := StartClient(unit.host, unit.port, unit.domain_socket, unit.transport, unit.protocol, unit.ssl)
 	if err != nil {
-		t.Errorf("Unable to start client", err)
-		t.FailNow()
+		t.Fatalf("Unable to start client: %v", err)
 	}
-	defer client.Transport.Close()
+	defer trans.Close()
 	callEverythingWithMock(t, client, handler)
 }
 
